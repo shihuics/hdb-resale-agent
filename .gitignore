@@ -1,3 +1,10 @@
 data/
 *.duckdb
 .env
+*.duckdb.wal
+.venv/
+__pycache__/
+   dbt/target/
+   dbt/logs/
+   dbt/.user.yml
+   logs/

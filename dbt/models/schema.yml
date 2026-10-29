@@ -1,0 +1,14 @@
+version: 2
+models:
+  - name: fct_resale
+    columns:
+      - name: txn_month
+        data_tests: [not_null]
+      - name: resale_price
+        data_tests: [not_null]
+      - name: remaining_lease_years
+        data_tests: [not_null]
+      - name: flat_type
+        data_tests:
+          - accepted_values:
+              values: ['1 ROOM', '2 ROOM', '3 ROOM', '4 ROOM', '5 ROOM', 'EXECUTIVE', 'MULTI-GENERATION']

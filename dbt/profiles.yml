@@ -1,0 +1,7 @@
+hdb:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: hdb.duckdb
+      threads: 4

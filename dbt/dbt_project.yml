@@ -1,0 +1,11 @@
+name: hdb
+version: "1.0"
+profile: hdb
+model-paths: ["models"]
+test-paths: ["tests"]
+models:
+  hdb:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table
