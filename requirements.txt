@@ -1,5 +1,7 @@
 agate==1.9.1
 annotated-types==0.7.0
+anthropic==0.125.0
+anyio==4.12.1
 attrs==26.1.0
 babel==2.18.0
 certifi==2026.10.23
@@ -15,11 +17,18 @@ dbt-extractor==0.6.0
 dbt-protos==1.0.615
 dbt-semantic-interfaces==0.9.0
 deepdiff==8.6.2
+distro==1.9.0
+docstring_parser==0.18.0
 duckdb==1.4.5
+exceptiongroup==1.3.1
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
 idna==3.20
 importlib_metadata==8.7.1
 isodate==0.6.1
 Jinja2==3.1.6
+jiter==0.16.0
 jsonschema==4.25.1
 jsonschema-specifications==2025.9.1
 leather==0.4.1
@@ -38,6 +47,7 @@ protobuf==6.33.6
 pydantic==2.13.5
 pydantic_core==2.46.5
 python-dateutil==2.9.0.post0
+python-dotenv==1.2.1
 python-slugify==8.0.4
 pytimeparse==1.1.8
 pytz==2026.5
@@ -46,6 +56,7 @@ referencing==0.36.2
 requests==2.32.5
 rpds-py==0.27.1
 six==1.17.0
+sniffio==1.3.1
 snowplow-tracker==1.1.0
 sqlparse==0.5.4
 text-unidecode==1.3
