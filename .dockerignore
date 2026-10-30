@@ -1,0 +1,13 @@
+.venv
+.env
+.git
+data
+*.duckdb
+*.duckdb.wal
+*.tmp
+dbt/target
+dbt/logs
+logs
+__pycache__
+evals/feedback.csv
+evals/last_run.csv
