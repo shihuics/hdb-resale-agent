@@ -1,0 +1,17 @@
+- id: median-tampines-4rm-2025
+  difficulty: easy
+  question: What was the median 4-room resale price in Tampines in 2025?
+  gold_sql: |
+    SELECT median(resale_price) AS median_price
+    FROM fct_resale
+    WHERE town = 'TAMPINES' AND flat_type = '4 ROOM' AND txn_year = 2025
+- id: yoy-psm-4rm-by-town
+  difficulty: hard
+  question: Which 5 towns had the biggest year-over-year rise in median 4-room price psm from 2024 to 2025?
+  gold_sql: |
+    WITH y AS (
+      SELECT town, txn_year, median(price_psm) AS m
+      FROM fct_resale WHERE flat_type = '4 ROOM' AND txn_year IN (2024, 2025)
+      GROUP BY 1, 2)
+    SELECT town, MAX(m) FILTER (WHERE txn_year = 2025) / MAX(m) FILTER (WHERE txn_year = 2024) - 1 AS yoy
+    FROM y GROUP BY town ORDER BY yoy DESC LIMIT 5

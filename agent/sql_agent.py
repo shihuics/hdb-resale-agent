@@ -17,10 +17,11 @@ If the question is ambiguous, pick the most reasonable reading and state it in a
 SUMMARY_PROMPT = ("Answer the question in 2-4 plain sentences using only the query result. "
                   "Show money as S$ with thousands separators. Never add facts that are not in the result.")
 
-def ask_llm(system, user, max_tokens=1000):
+def ask_llm(system, user, max_tokens=4000):
     resp = client.messages.create(model=MODEL, max_tokens=max_tokens, system=system,
                                   messages=[{"role": "user", "content": user}])
-    return resp.content[0].text
+    # Keep only text blocks; the model may also return a thinking block first
+    return "".join(b.text for b in resp.content if b.type == "text")
 
 def extract_sql(text):
     m = re.search(r"```sql\s*(.*?)```", text, re.S)

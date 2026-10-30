@@ -4,7 +4,9 @@ data/
 *.duckdb.wal
 .venv/
 __pycache__/
-   dbt/target/
-   dbt/logs/
-   dbt/.user.yml
-   logs/
+dbt/target/
+dbt/logs/
+dbt/.user.yml
+logs/
+evals/feedback.csv
+evals/last_run.csv
