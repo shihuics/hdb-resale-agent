@@ -6,7 +6,9 @@ from telegram.ext import (Application, CommandHandler, MessageHandler,
                           CallbackQueryHandler, ContextTypes, filters)
 
 sys.path.insert(0, "agent")
+sys.path.insert(0, "bot")
 from sql_agent import answer, DB
+from chart import make_chart
 
 DB_URL = os.environ["DB_URL"]
 ALLOWED = {int(x) for x in os.environ.get("ALLOWED_CHAT_IDS", "").split(",") if x}
@@ -125,7 +127,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.chat.send_action("typing")
     question = update.message.text
-    text, sql, _ = await asyncio.to_thread(answer, question)
+    text, sql, df = await asyncio.to_thread(answer, question)
     context.chat_data["last_sql"] = sql
 
     answer_id = uuid.uuid4().hex[:8]
@@ -135,6 +137,10 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         InlineKeyboardButton("👎", callback_data=f"fb:down:{answer_id}"),
     ]])
     await update.message.reply_text(text, reply_markup=buttons)
+
+    png = await asyncio.to_thread(make_chart, df, question)
+    if png:
+        await update.message.reply_photo(photo=png)
 
 async def feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
