@@ -26,7 +26,7 @@ for c in cases:
         ok = matches(run(sql), run(c["gold_sql"]))
     except Exception as e:
         sql, ok = f"ERROR: {e}", False
-    rows.append({"id": c["id"], "difficulty": c["difficulty"], "pass": ok, "sql": sql})
+    rows.append({"id": c["id"], "difficulty": c["difficulty"], "question": c["question"], "pass": ok, "sql": sql})
 
 report = pd.DataFrame(rows)
 print(report.groupby("difficulty")["pass"].mean().round(2))

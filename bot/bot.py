@@ -9,6 +9,7 @@ sys.path.insert(0, "agent")
 sys.path.insert(0, "bot")
 from sql_agent import answer, DB
 from chart import make_chart
+from valuation import valuation_reply
 
 DB_URL = os.environ["DB_URL"]
 ALLOWED = {int(x) for x in os.environ.get("ALLOWED_CHAT_IDS", "").split(",") if x}
@@ -64,6 +65,8 @@ HELP_TEXT = (
     "Commands:\n"
     "/sql – show the SQL behind my last answer\n"
     "/comps <block> <flat type> – recent sales in a block, e.g. /comps 123 4 ROOM\n"
+    "/valuation <flat details> – estimate a fair price, e.g.\n"
+    "   /valuation 3 room, blk 406 Ang Mo Kio Ave 10, 10th floor, 67 sqm\n"
     "/data – what period the data covers\n"
     "/help – this message\n\n"
     "Tap 👍 or 👎 under an answer to tell me if it was right."
@@ -120,6 +123,21 @@ async def comps_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines))
 
 
+async def valuation_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not allowed(update):
+        return
+    text = " ".join(context.args)
+    if not text:
+        await update.message.reply_text(
+            "Tell me about the flat, e.g.\n"
+            "/valuation 3 room, blk 406 Ang Mo Kio Ave 10, 10th floor, 67 sqm\n"
+            "Block, street and flat type are needed; floor and size are optional.")
+        return
+    await update.message.chat.send_action("typing")
+    reply = await asyncio.to_thread(valuation_reply, text)
+    await update.message.reply_text(reply)
+
+
 # ---------- questions + feedback ----------
 
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -169,6 +187,7 @@ def main():
     app.add_handler(CommandHandler("sql", show_sql))
     app.add_handler(CommandHandler("data", data_cmd))
     app.add_handler(CommandHandler("comps", comps_cmd))
+    app.add_handler(CommandHandler("valuation", valuation_cmd))
     app.add_handler(CallbackQueryHandler(feedback, pattern=r"^fb:"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle))
     app.job_queue.run_repeating(refresh_job, interval=86400, first=86400)
