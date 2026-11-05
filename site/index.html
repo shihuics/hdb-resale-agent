@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HDB Resale Price Map</title>
+<meta name="description" content="Median HDB resale prices by block across Singapore, from official data.gov.sg transactions.">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css">
+<style>
+  :root {
+    --ink: #1f2328;
+    --muted: #6b7280;
+    --line: #e5e7eb;
+    --bg: #ffffff;
+    --soft: #f6f7f9;
+    --accent: #e11d48;
+    --q1: #0f766e; --q2: #22a39a; --q3: #a3a3a3; --q4: #f59e0b; --q5: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink); background: var(--bg);
+    display: flex; flex-direction: column;
+  }
+  header {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;
+    padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--bg); z-index: 2;
+  }
+  header h1 { font-size: 17px; margin: 0 8px 0 0; white-space: nowrap; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .types { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip {
+    border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+    border-radius: 999px; padding: 6px 12px; font: inherit; cursor: pointer; white-space: nowrap;
+  }
+  .chip:hover { border-color: var(--ink); }
+  .chip[aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+  select, input[type=search], input[type=number] {
+    font: inherit; color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; min-width: 0;
+  }
+  input[type=search] { width: 210px; }
+  input[type=number] { width: 110px; }
+  main { flex: 1; display: flex; min-height: 0; }
+  #listPane { width: 400px; max-width: 45%; display: flex; flex-direction: column; border-right: 1px solid var(--line); }
+  .listHead { padding: 12px 16px 8px; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .listHead strong { font-size: 15px; }
+  #list { overflow-y: auto; padding: 0 8px 16px; flex: 1; }
+  .card {
+    display: grid; grid-template-columns: 1fr auto; gap: 2px 12px;
+    padding: 12px 10px; border-radius: 12px; cursor: pointer; border: 1px solid transparent;
+  }
+  .card:hover, .card.active { background: var(--soft); border-color: var(--line); }
+  .card .addr { font-weight: 600; }
+  .card .price { font-weight: 700; text-align: right; }
+  .card .meta, .card .sub { color: var(--muted); font-size: 13px; }
+  .card .sub { text-align: right; }
+  .empty { color: var(--muted); padding: 24px 16px; }
+  #map { flex: 1; min-height: 0; }
+  .legend { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+  .note { color: var(--muted); font-size: 12px; padding: 8px 16px 12px; border-top: 1px solid var(--line); }
+
+  /* Price pills */
+  .pill-wrap { background: none; border: none; }
+  .pill {
+    position: absolute; transform: translate(-50%, -50%);
+    display: inline-flex; align-items: center; gap: 5px;
+    background: #fff; color: var(--ink); font-weight: 700; font-size: 12.5px;
+    padding: 4px 9px; border-radius: 999px; white-space: nowrap;
+    box-shadow: 0 1px 2px rgba(0,0,0,.18), 0 0 0 1px rgba(0,0,0,.06);
+    transition: transform .12s ease, background .12s ease;
+  }
+  .pill:hover, .pill.hot { background: var(--ink); color: #fff; transform: translate(-50%, -50%) scale(1.08); z-index: 1000; }
+  .cluster {
+    position: absolute; transform: translate(-50%, -50%);
+    background: #fff; color: var(--ink); border-radius: 999px; padding: 5px 10px;
+    font-weight: 700; font-size: 12.5px; white-space: nowrap;
+    box-shadow: 0 1px 3px rgba(0,0,0,.22), 0 0 0 1px rgba(0,0,0,.06);
+  }
+  .cluster span { color: var(--muted); font-weight: 500; margin-left: 4px; }
+  .cluster:hover { background: var(--ink); color: #fff; }
+  .cluster:hover span { color: #d1d5db; }
+
+  /* Popup */
+  .leaflet-popup-content-wrapper { border-radius: 14px; }
+  .leaflet-popup-content { margin: 14px 16px; width: 280px !important; font: inherit; }
+  .pop h3 { margin: 0 0 2px; font-size: 15px; }
+  .pop .town { color: var(--muted); margin-bottom: 10px; }
+  .pop .big { font-size: 22px; font-weight: 800; }
+  .pop .small { color: var(--muted); font-size: 12.5px; }
+  .pop table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12.5px; }
+  .pop td { padding: 3px 0; border-top: 1px solid var(--line); }
+  .pop td:last-child { text-align: right; font-weight: 600; }
+  .pop .facts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 10px 0 4px; }
+  .pop .fact { background: var(--soft); border-radius: 8px; padding: 6px 8px; }
+  .pop .fact b { display: block; font-size: 13px; }
+  .pop svg { display: block; margin-top: 8px; }
+
+  @media (max-width: 800px) {
+    header { padding: 10px 12px; gap: 8px; }
+    header h1 { font-size: 15px; }
+    .controls { width: 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+    .controls::-webkit-scrollbar { display: none; }
+    .controls > *, .types { flex: none; }
+    .types { flex-wrap: nowrap; }
+    input[type=search] { width: 190px; }
+    main { flex-direction: column-reverse; }
+    #listPane { width: 100%; max-width: none; height: 40vh; border-right: none; border-top: 1px solid var(--line); }
+    .note { font-size: 11px; padding: 6px 12px 8px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>HDB Resale Price Map</h1>
+  <div class="controls">
+    <div class="types" id="types" role="group" aria-label="Flat type"></div>
+    <input type="search" id="search" placeholder="Search block, street or town" aria-label="Search">
+    <input type="number" id="maxPrice" placeholder="Max S$ (k)" min="0" step="10" aria-label="Maximum price in thousands">
+    <select id="mrt" aria-label="Distance to MRT">
+      <option value="">Any distance to MRT</option>
+      <option value="300">Within 300 m of MRT</option>
+      <option value="500">Within 500 m of MRT</option>
+      <option value="1000">Within 1 km of MRT</option>
+    </select>
+    <select id="lease" aria-label="Remaining lease">
+      <option value="">Any lease left</option>
+      <option value="60">60+ years left</option>
+      <option value="70">70+ years left</option>
+      <option value="80">80+ years left</option>
+    </select>
+    <select id="sort" aria-label="Sort">
+      <option value="p">Sort: lowest price</option>
+      <option value="-p">Sort: highest price</option>
+      <option value="q">Sort: lowest price per sqm</option>
+      <option value="md">Sort: closest to MRT</option>
+      <option value="-n">Sort: most sales</option>
+    </select>
+  </div>
+</header>
+<main>
+  <section id="listPane" aria-label="Blocks in view">
+    <div class="listHead">
+      <strong id="count">Loading…</strong>
+      <div class="legend" aria-label="Price per sqm, low to high">
+        per sqm: low
+        <span class="dot" style="background:var(--q1)"></span><span class="dot" style="background:var(--q2)"></span><span class="dot" style="background:var(--q3)"></span><span class="dot" style="background:var(--q4)"></span><span class="dot" style="background:var(--q5)"></span>
+        high
+      </div>
+    </div>
+    <div id="list"></div>
+    <div class="note" id="note">Median transacted prices from HDB resale registrations — past sales, not listings.</div>
+  </section>
+  <div id="map" aria-label="Map of HDB blocks"></div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
+<script>
+// ---------- settings ----------
+const TILE_URL = "https://www.onemap.gov.sg/maps/tiles/Grey_HD/{z}/{x}/{y}.png";
+const TILE_ATTR = '<a href="https://www.onemap.gov.sg/" target="_blank" rel="noopener">OneMap</a> © contributors | ' +
+                  '<a href="https://www.sla.gov.sg/" target="_blank" rel="noopener">Singapore Land Authority</a> | ' +
+                  'Data: <a href="https://data.gov.sg/dataset/resale-flat-prices" target="_blank" rel="noopener">data.gov.sg</a>';
+const DEFAULT_TYPE = "4 ROOM";
+const LIST_LIMIT = 80;
+const QCOLORS = ["--q1", "--q2", "--q3", "--q4", "--q5"];
+
+// ---------- helpers ----------
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const k = v => v >= 1e6 ? `S$${(v / 1e6).toFixed(2).replace(/0$/, "")}M` : `S$${Math.round(v / 1000)}k`;
+const money = v => "S$" + Math.round(v).toLocaleString("en-SG");
+const title = s => s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase()).replace(/\bMrt\b/g, "MRT");
+const station = s => s ? title(s.replace(/ MRT STATION$/i, "")) + " MRT" : "";
+const median = a => { const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+const thisYear = new Date().getFullYear();
+
+// ---------- state ----------
+let DATA, flatType = DEFAULT_TYPE, quintiles = [], active = null;
+const markers = new Map();   // block index -> marker (for the current flat type)
+
+const map = L.map("map", { minZoom: 11, maxZoom: 19, zoomControl: true, preferCanvas: false })
+  .setView([1.3521, 103.8198], 12);
+map.setMaxBounds([[1.16, 103.55], [1.49, 104.10]]);
+L.tileLayer(TILE_URL, { minZoom: 11, maxZoom: 19, attribution: TILE_ATTR, detectRetina: true }).addTo(map);
+
+const cluster = L.markerClusterGroup({
+  chunkedLoading: true,
+  showCoverageOnHover: false,
+  spiderfyOnMaxZoom: true,
+  maxClusterRadius: zoom => zoom >= 15 ? 35 : 60,
+  disableClusteringAtZoom: 17,
+  iconCreateFunction: c => {
+    const prices = c.getAllChildMarkers().map(m => m.options.price);
+    return L.divIcon({
+      className: "pill-wrap", iconSize: null,
+      html: `<div class="cluster">${k(median(prices))}<span>${prices.length}</span></div>`,
+    });
+  },
+});
+map.addLayer(cluster);
+
+// ---------- filters ----------
+function filters() {
+  return {
+    text: $("search").value.trim().toUpperCase(),
+    maxPrice: parseFloat($("maxPrice").value) * 1000 || Infinity,
+    mrt: parseFloat($("mrt").value) || Infinity,
+    lease: parseFloat($("lease").value) || 0,
+  };
+}
+
+function passes(b, f) {
+  const s = b.f[flatType];
+  if (!s) return false;
+  if (s.p > f.maxPrice) return false;
+  if (f.mrt !== Infinity && (b.md == null || b.md > f.mrt)) return false;
+  if (f.lease && b.ly + 99 - thisYear < f.lease) return false;
+  if (f.text && !`${b.b} ${b.s} ${b.t}`.includes(f.text)) return false;
+  return true;
+}
+
+function quintile(q) {
+  let i = 0;
+  while (i < quintiles.length && q > quintiles[i]) i++;
+  return QCOLORS[i];
+}
+
+// ---------- markers ----------
+function popupHtml(b) {
+  const s = b.f[flatType];
+  const lease = b.ly + 99 - thisYear;
+  const rows = s.r.map(([ym, storey, area, price]) => {
+    const [y, m] = ym.split("-");
+    const mon = new Date(+y, +m - 1).toLocaleString("en-SG", { month: "short" });
+    return `<tr><td>${mon} ${y} · ${esc(storey)} · ${area} sqm</td><td>${money(price)}</td></tr>`;
+  }).join("");
+  return `<div class="pop">
+    <h3>Blk ${esc(b.b)} ${esc(title(b.s))}</h3>
+    <div class="town">${esc(title(b.t))} · ${esc(title(flatType))}</div>
+    <div class="big">${money(s.p)}</div>
+    <div class="small">median of ${s.n} sale${s.n === 1 ? "" : "s"} · ${DATA.window}</div>
+    <div class="facts">
+      <div class="fact"><b>${money(s.q)}</b>per sqm</div>
+      <div class="fact"><b>${k(s.lo)} – ${k(s.hi)}</b>price range</div>
+      <div class="fact"><b>${b.md != null ? b.md.toLocaleString() + " m" : "—"}</b>${esc(station(b.m)) || "nearest MRT"}</div>
+      <div class="fact"><b>~${lease} years</b>lease left</div>
+    </div>
+    ${sparkline(s.r)}
+    <table>${rows}</table>
+  </div>`;
+}
+
+function sparkline(sales) {
+  if (sales.length < 2) return "";
+  const pts = [...sales].reverse().map(([ym, , , p]) => {
+    const [y, m] = ym.split("-").map(Number);
+    return [y * 12 + m, p];
+  });
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const W = 280, H = 44, pad = 5;
+  const X = x => x1 === x0 ? W / 2 : pad + (x - x0) / (x1 - x0) * (W - 2 * pad);
+  const Y = y => y1 === y0 ? H / 2 : H - pad - (y - y0) / (y1 - y0) * (H - 2 * pad);
+  const path = pts.map((p, i) => `${i ? "L" : "M"}${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join(" ");
+  const dots = pts.map(p => `<circle cx="${X(p[0]).toFixed(1)}" cy="${Y(p[1]).toFixed(1)}" r="2.6" fill="#1f2328"/>`).join("");
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Recent sale prices">
+    <path d="${path}" fill="none" stroke="#9ca3af" stroke-width="1.5"/>${dots}</svg>`;
+}
+
+function buildMarkers() {
+  markers.clear();
+  const psm = DATA.blocks.map(b => b.f[flatType]?.q).filter(Boolean).sort((a, b) => a - b);
+  quintiles = [0.2, 0.4, 0.6, 0.8].map(p => psm[Math.floor(p * (psm.length - 1))]);
+  DATA.blocks.forEach((b, i) => {
+    const s = b.f[flatType];
+    if (!s) return;
+    const icon = L.divIcon({
+      className: "pill-wrap", iconSize: null,
+      html: `<div class="pill" data-i="${i}"><span class="dot" style="background:var(${quintile(s.q)})"></span>${k(s.p)}</div>`,
+    });
+    const m = L.marker([b.la, b.lo], { icon, price: s.p, riseOnHover: true, keyboard: false });
+    m.bindPopup(() => popupHtml(b), { maxWidth: 320, autoPanPadding: [30, 30] });
+    m.on("mouseover", () => highlight(i, true));
+    m.on("mouseout", () => highlight(i, false));
+    markers.set(i, m);
+  });
+}
+
+function applyFilters() {
+  const f = filters();
+  const keep = [];
+  markers.forEach((m, i) => { if (passes(DATA.blocks[i], f)) keep.push(m); });
+  cluster.clearLayers();
+  cluster.addLayers(keep);
+  renderList();
+}
+
+// ---------- list ----------
+function renderList() {
+  const f = filters(), bounds = map.getBounds();
+  const sortKey = $("sort").value, desc = sortKey.startsWith("-"), field = sortKey.replace("-", "");
+  const val = b => field === "md" ? (b.md ?? 1e9) : b.f[flatType][field];
+  const visible = [];
+  markers.forEach((m, i) => {
+    const b = DATA.blocks[i];
+    if (passes(b, f) && bounds.contains(m.getLatLng())) visible.push(i);
+  });
+  visible.sort((a, b) => (val(DATA.blocks[a]) - val(DATA.blocks[b])) * (desc ? -1 : 1));
+
+  $("count").textContent = `${visible.length.toLocaleString()} block${visible.length === 1 ? "" : "s"} in view`;
+  if (!visible.length) {
+    $("list").innerHTML = `<div class="empty">No ${esc(title(flatType))} sales match here. Zoom out or relax the filters.</div>`;
+    return;
+  }
+  $("list").innerHTML = visible.slice(0, LIST_LIMIT).map(i => {
+    const b = DATA.blocks[i], s = b.f[flatType];
+    const mrt = b.md != null ? `${b.md.toLocaleString()} m to ${esc(station(b.m))}` : "MRT distance n/a";
+    return `<div class="card${active === i ? " active" : ""}" data-i="${i}" tabindex="0" role="button">
+      <div class="addr">Blk ${esc(b.b)} ${esc(title(b.s))}</div>
+      <div class="price">${money(s.p)}</div>
+      <div class="meta">${esc(title(b.t))} · ${mrt} · ~${b.ly + 99 - thisYear} yrs lease</div>
+      <div class="sub">${money(s.q)}/sqm · ${s.n} sale${s.n === 1 ? "" : "s"}</div>
+    </div>`;
+  }).join("") + (visible.length > LIST_LIMIT
+    ? `<div class="empty">Showing ${LIST_LIMIT} of ${visible.length.toLocaleString()}. Zoom in to see the rest.</div>` : "");
+}
+
+function highlight(i, on) {
+  document.querySelectorAll(`.pill[data-i="${i}"]`).forEach(el => el.classList.toggle("hot", on));
+  document.querySelectorAll(`.card[data-i="${i}"]`).forEach(el => el.classList.toggle("active", on || active === i));
+}
+
+function openBlock(i) {
+  const m = markers.get(i);
+  if (!m) return;
+  active = i;
+  cluster.zoomToShowLayer(m, () => m.openPopup());
+}
+
+$("list").addEventListener("click", e => {
+  const card = e.target.closest(".card");
+  if (card) openBlock(+card.dataset.i);
+});
+$("list").addEventListener("keydown", e => {
+  const card = e.target.closest(".card");
+  if (card && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openBlock(+card.dataset.i); }
+});
+$("list").addEventListener("mouseover", e => {
+  const card = e.target.closest(".card");
+  if (card) highlight(+card.dataset.i, true);
+});
+$("list").addEventListener("mouseout", e => {
+  const card = e.target.closest(".card");
+  if (card) highlight(+card.dataset.i, false);
+});
+
+// ---------- controls ----------
+function renderTypes() {
+  $("types").innerHTML = DATA.flat_types.map(t =>
+    `<button class="chip" aria-pressed="${t === flatType}" data-t="${esc(t)}">${esc(title(t))}</button>`).join("");
+}
+$("types").addEventListener("click", e => {
+  const btn = e.target.closest(".chip");
+  if (!btn) return;
+  flatType = btn.dataset.t;
+  active = null;
+  map.closePopup();
+  renderTypes(); buildMarkers(); applyFilters();
+});
+// Move the map to whatever the search matches
+function fitToMatches() {
+  const f = filters();
+  if (!f.text) return;
+  const pts = [];
+  markers.forEach((m, i) => { if (passes(DATA.blocks[i], f)) pts.push(m.getLatLng()); });
+  if (pts.length) map.fitBounds(L.latLngBounds(pts), { padding: [40, 40], maxZoom: 17 });
+}
+let typing;
+$("search").addEventListener("input", () => {
+  clearTimeout(typing); typing = setTimeout(() => { applyFilters(); fitToMatches(); }, 300);
+});
+$("maxPrice").addEventListener("input", () => {
+  clearTimeout(typing); typing = setTimeout(applyFilters, 300);
+});
+["mrt", "lease"].forEach(id => $(id).addEventListener("change", applyFilters));
+$("sort").addEventListener("change", renderList);
+map.on("moveend", renderList);
+map.on("popupclose", () => { active = null; });
+
+// ---------- load ----------
+fetch("blocks.json")
+  .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+  .then(d => {
+    DATA = d;
+    if (!DATA.flat_types.includes(flatType)) flatType = DATA.flat_types[0];
+    $("note").textContent = `Median transacted prices from HDB resale registrations, ${DATA.window} — past sales, not listings. Data up to ${DATA.latest}.`;
+    renderTypes(); buildMarkers(); applyFilters();
+  })
+  .catch(() => {
+    $("count").textContent = "Couldn't load the data";
+    $("list").innerHTML = `<div class="empty">blocks.json is missing. Run <code>python site/export_blocks.py</code> first, and open the page through a web server, not by double-clicking the file.</div>`;
+  });
+</script>
+</body>
+</html>

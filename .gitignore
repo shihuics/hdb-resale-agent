@@ -11,3 +11,4 @@ logs/
 evals/feedback.csv
 evals/last_run.csv
 evals/valuation_backtest.csv
+site/blocks.json
