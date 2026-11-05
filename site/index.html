@@ -45,18 +45,41 @@
   input[type=number] { width: 110px; }
   main { flex: 1; display: flex; min-height: 0; }
   #listPane { width: 400px; max-width: 45%; display: flex; flex-direction: column; border-right: 1px solid var(--line); }
-  .listHead { padding: 12px 16px 8px; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .listHead { padding: 12px 16px 8px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px 12px; }
+  .listHead > div:first-child { display: flex; align-items: baseline; gap: 10px; }
+  .legend { white-space: nowrap; }
   .listHead strong { font-size: 15px; }
   #list { overflow-y: auto; padding: 0 8px 16px; flex: 1; }
   .card {
-    display: grid; grid-template-columns: 1fr auto; gap: 2px 12px;
-    padding: 12px 10px; border-radius: 12px; cursor: pointer; border: 1px solid transparent;
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 14px;
+    padding: 14px 12px; border-radius: 14px; cursor: pointer; border: 1px solid transparent;
+    border-bottom-color: var(--line);
   }
   .card:hover, .card.active { background: var(--soft); border-color: var(--line); }
-  .card .addr { font-weight: 600; }
-  .card .price { font-weight: 700; text-align: right; }
+  .card .addr { font-weight: 650; font-size: 14.5px; display: flex; align-items: center; gap: 7px; min-width: 0; }
+  .card .addr span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card .town { color: var(--muted); font-size: 13px; }
+  .card .right { grid-row: 1 / span 2; grid-column: 2; text-align: right; }
+  .card .price { font-weight: 750; font-size: 16px; }
+  .card .psm { color: var(--muted); font-size: 12.5px; }
+  .card .bottom { grid-column: 1 / -1; display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-top: 4px; }
+  .tags { display: flex; flex-wrap: wrap; gap: 5px; }
+  .tag { background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; font-size: 12px; color: var(--ink); white-space: nowrap; }
+  .card:hover .tag, .card.active .tag { background: #fff; }
+  .chg { font-size: 12px; font-weight: 650; border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+  .chg.up { color: #9a3412; background: #ffedd5; }
+  .chg.down { color: #115e59; background: #ccfbf1; }
+  .chg.flat { color: var(--muted); background: var(--soft); }
+  .spark { flex: none; }
+  /* Compact cards (the original format, default) */
+  .card.compact { gap: 2px 12px; padding: 12px 10px; border-radius: 12px; border-bottom-color: transparent; }
+  .card.compact:hover, .card.compact.active { border-color: var(--line); }
+  .card.compact .addr { font-weight: 600; font-size: 14px; display: block; }
+  .card.compact .price { font-weight: 700; font-size: 14px; text-align: right; }
   .card .meta, .card .sub { color: var(--muted); font-size: 13px; }
   .card .sub { text-align: right; }
+  .viewToggle { border: none; background: none; color: var(--ink); font: inherit; font-size: 12.5px;
+                text-decoration: underline; cursor: pointer; padding: 0; white-space: nowrap; }
   .empty { color: var(--muted); padding: 24px 16px; }
   #map { flex: 1; min-height: 0; }
   .legend { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
@@ -144,8 +167,9 @@
 <main>
   <section id="listPane" aria-label="Blocks in view">
     <div class="listHead">
-      <strong id="count">Loading…</strong>
-      <div class="legend" aria-label="Price per sqm, low to high">
+      <div><strong id="count">Loading…</strong>
+        <button class="viewToggle" id="viewToggle" type="button" aria-pressed="false">Detailed view</button></div>
+      <div class="legend" aria-label="Price per sqm, low to high" title="Price per sqm compared with all blocks of this flat type: dark teal = cheapest fifth, red = priciest fifth">
         per sqm: low
         <span class="dot" style="background:var(--q1)"></span><span class="dot" style="background:var(--q2)"></span><span class="dot" style="background:var(--q3)"></span><span class="dot" style="background:var(--q4)"></span><span class="dot" style="background:var(--q5)"></span>
         high
@@ -168,6 +192,8 @@ const TILE_ATTR = '<a href="https://www.onemap.gov.sg/" target="_blank" rel="noo
 const DEFAULT_TYPE = "4 ROOM";
 const LIST_LIMIT = 80;
 const QCOLORS = ["--q1", "--q2", "--q3", "--q4", "--q5"];
+let detailed = false;  // list cards: false = compact (default), true = detailed
+try { detailed = localStorage.getItem("cardView") === "detailed"; } catch (e) {}
 
 // ---------- helpers ----------
 const $ = id => document.getElementById(id);
@@ -250,12 +276,25 @@ function popupHtml(b) {
       <div class="fact"><b>${b.md != null ? b.md.toLocaleString() + " m" : "—"}</b>${esc(station(b.m)) || "nearest MRT"}</div>
       <div class="fact"><b>~${lease} years</b>lease left</div>
     </div>
+    ${s.y != null ? `<div style="margin-top:6px">${change(s.y)}</div>` : ""}
     ${sparkline(s.r)}
     <table>${rows}</table>
   </div>`;
 }
 
-function sparkline(sales) {
+const QLABEL = ["cheapest 20%", "20–40%", "middle 40–60%", "60–80%", "priciest 20%"];
+function qTitle(q) { return `Price per sqm: ${QLABEL[QCOLORS.indexOf(quintile(q))]} of ${title(flatType)} blocks`; }
+
+function change(y) {
+  if (y == null) return "";
+  const pct = (y * 100).toFixed(1).replace("-", "−");
+  if (Math.abs(y) < 0.005) return `<span class="chg flat" title="Price per sqm vs the 12 months before">≈ 0% vs last yr</span>`;
+  return y > 0
+    ? `<span class="chg up" title="Price per sqm vs the 12 months before">▲ ${pct}% vs last yr</span>`
+    : `<span class="chg down" title="Price per sqm vs the 12 months before">▼ ${pct}% vs last yr</span>`;
+}
+
+function sparkline(sales, W = 280, H = 44, label = "Recent sale prices") {
   if (sales.length < 2) return "";
   const pts = [...sales].reverse().map(([ym, , , p]) => {
     const [y, m] = ym.split("-").map(Number);
@@ -263,12 +302,13 @@ function sparkline(sales) {
   });
   const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
   const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
-  const W = 280, H = 44, pad = 5;
+  const pad = 4;
   const X = x => x1 === x0 ? W / 2 : pad + (x - x0) / (x1 - x0) * (W - 2 * pad);
   const Y = y => y1 === y0 ? H / 2 : H - pad - (y - y0) / (y1 - y0) * (H - 2 * pad);
   const path = pts.map((p, i) => `${i ? "L" : "M"}${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join(" ");
-  const dots = pts.map(p => `<circle cx="${X(p[0]).toFixed(1)}" cy="${Y(p[1]).toFixed(1)}" r="2.6" fill="#1f2328"/>`).join("");
-  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Recent sale prices">
+  const r = W < 150 ? 2 : 2.6;
+  const dots = pts.map(p => `<circle cx="${X(p[0]).toFixed(1)}" cy="${Y(p[1]).toFixed(1)}" r="${r}" fill="#1f2328"/>`).join("");
+  return `<svg class="spark" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${label}">
     <path d="${path}" fill="none" stroke="#9ca3af" stroke-width="1.5"/>${dots}</svg>`;
 }
 
@@ -281,7 +321,7 @@ function buildMarkers() {
     if (!s) return;
     const icon = L.divIcon({
       className: "pill-wrap", iconSize: null,
-      html: `<div class="pill" data-i="${i}"><span class="dot" style="background:var(${quintile(s.q)})"></span>${k(s.p)}</div>`,
+      html: `<div class="pill" data-i="${i}" title="${esc(qTitle(s.q))}"><span class="dot" style="background:var(${quintile(s.q)})"></span>${k(s.p)}</div>`,
     });
     const m = L.marker([b.la, b.lo], { icon, price: s.p, riseOnHover: true, keyboard: false });
     m.bindPopup(() => popupHtml(b), { maxWidth: 320, autoPanPadding: [30, 30] });
@@ -319,12 +359,24 @@ function renderList() {
   }
   $("list").innerHTML = visible.slice(0, LIST_LIMIT).map(i => {
     const b = DATA.blocks[i], s = b.f[flatType];
-    const mrt = b.md != null ? `${b.md.toLocaleString()} m to ${esc(station(b.m))}` : "MRT distance n/a";
-    return `<div class="card${active === i ? " active" : ""}" data-i="${i}" tabindex="0" role="button">
+    if (!detailed) {
+      const mrtText = b.md != null ? `${b.md.toLocaleString()} m to ${esc(station(b.m))}` : "MRT distance n/a";
+      return `<div class="card compact${active === i ? " active" : ""}" data-i="${i}" tabindex="0" role="button">
       <div class="addr">Blk ${esc(b.b)} ${esc(title(b.s))}</div>
       <div class="price">${money(s.p)}</div>
-      <div class="meta">${esc(title(b.t))} · ${mrt} · ~${b.ly + 99 - thisYear} yrs lease</div>
+      <div class="meta">${esc(title(b.t))} · ${mrtText} · ~${b.ly + 99 - thisYear} yrs lease</div>
       <div class="sub">${money(s.q)}/sqm · ${s.n} sale${s.n === 1 ? "" : "s"}</div>
+    </div>`;
+    }
+    const mrt = b.md != null ? `<span class="tag" title="Straight-line distance to the nearest MRT exit">🚇 ${b.md.toLocaleString()} m · ${esc(station(b.m).replace(" MRT", ""))}</span>` : "";
+    return `<div class="card${active === i ? " active" : ""}" data-i="${i}" tabindex="0" role="button">
+      <div class="addr"><span class="dot" style="background:var(${quintile(s.q)})" title="${esc(qTitle(s.q))}"></span><span>Blk ${esc(b.b)} ${esc(title(b.s))}</span></div>
+      <div class="right"><div class="price">${money(s.p)}</div><div class="psm">${money(s.q)} / sqm</div></div>
+      <div class="town">${esc(title(b.t))} · ${s.n} sale${s.n === 1 ? "" : "s"} in 12 months</div>
+      <div class="bottom">
+        <div class="tags">${mrt}<span class="tag" title="Remaining lease, approximate">⏳ ~${b.ly + 99 - thisYear} yrs lease</span>${change(s.y)}</div>
+        ${sparkline(s.r, 96, 30, "Recent sale prices in this block")}
+      </div>
     </div>`;
   }).join("") + (visible.length > LIST_LIMIT
     ? `<div class="empty">Showing ${LIST_LIMIT} of ${visible.length.toLocaleString()}. Zoom in to see the rest.</div>` : "");
@@ -389,6 +441,14 @@ $("maxPrice").addEventListener("input", () => {
 });
 ["mrt", "lease"].forEach(id => $(id).addEventListener("change", applyFilters));
 $("sort").addEventListener("change", renderList);
+function setView(d) {
+  detailed = d;
+  $("viewToggle").textContent = detailed ? "Compact view" : "Detailed view";
+  $("viewToggle").setAttribute("aria-pressed", String(detailed));
+  try { localStorage.setItem("cardView", detailed ? "detailed" : "compact"); } catch (e) {}
+}
+setView(detailed);
+$("viewToggle").addEventListener("click", () => { setView(!detailed); if (DATA) renderList(); });
 map.on("moveend", renderList);
 map.on("popupclose", () => { active = null; });
 
