@@ -10,6 +10,7 @@ sys.path.insert(0, "bot")
 from sql_agent import answer, DB
 from chart import make_chart
 from valuation import valuation_reply
+import watch
 
 DB_URL = os.environ["DB_URL"]
 ALLOWED = {int(x) for x in os.environ.get("ALLOWED_CHAT_IDS", "").split(",") if x}
@@ -39,6 +40,12 @@ def refresh_db():
 
 async def refresh_job(context: ContextTypes.DEFAULT_TYPE):
     await asyncio.to_thread(refresh_db)
+    # After new data arrives, tell watchers about new sales in their blocks
+    for chat_id, message in await asyncio.to_thread(watch.check_new):
+        try:
+            await context.bot.send_message(chat_id=chat_id, text=message)
+        except Exception as e:  # e.g. the user blocked the bot
+            print(f"Could not send watch alert to {chat_id}: {e}")
 
 
 # ---------- helpers ----------
@@ -67,6 +74,9 @@ HELP_TEXT = (
     "/comps <block> <flat type> – recent sales in a block, e.g. /comps 123 4 ROOM\n"
     "/valuation <flat details> – estimate a fair price, e.g.\n"
     "   /valuation 3 room, blk 406 Ang Mo Kio Ave 10, 10th floor, 67 sqm\n"
+    "/watch <block> <street> <flat type> – get a message when new sales appear, e.g.\n"
+    "   /watch 540 Ang Mo Kio Ave 10 3 room\n"
+    "/watching – blocks you're watching · /unwatch <number> – stop one\n"
     "/data – what period the data covers\n"
     "/help – this message\n\n"
     "Tap 👍 or 👎 under an answer to tell me if it was right."
@@ -138,6 +148,20 @@ async def valuation_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(reply)
 
 
+async def watch_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if allowed(update):
+        reply = await asyncio.to_thread(watch.add, update.effective_chat.id, " ".join(context.args))
+        await update.message.reply_text(reply)
+
+async def watching_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if allowed(update):
+        await update.message.reply_text(watch.listing(update.effective_chat.id))
+
+async def unwatch_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if allowed(update):
+        await update.message.reply_text(watch.remove(update.effective_chat.id, " ".join(context.args)))
+
+
 # ---------- questions + feedback ----------
 
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -188,6 +212,9 @@ def main():
     app.add_handler(CommandHandler("data", data_cmd))
     app.add_handler(CommandHandler("comps", comps_cmd))
     app.add_handler(CommandHandler("valuation", valuation_cmd))
+    app.add_handler(CommandHandler("watch", watch_cmd))
+    app.add_handler(CommandHandler("watching", watching_cmd))
+    app.add_handler(CommandHandler("unwatch", unwatch_cmd))
     app.add_handler(CallbackQueryHandler(feedback, pattern=r"^fb:"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle))
     app.job_queue.run_repeating(refresh_job, interval=86400, first=86400)

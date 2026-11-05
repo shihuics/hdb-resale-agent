@@ -122,7 +122,60 @@
   .pop .fact b { display: block; font-size: 13px; }
   .pop svg { display: block; margin-top: 8px; }
 
+  /* Ask bar */
+  .ask { display: flex; gap: 8px; flex: 1 1 420px; min-width: 0; max-width: 720px; }
+  .ask input { flex: 1; min-width: 0; padding: 9px 16px; font-size: 14.5px; border-color: #d1d5db;
+               box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+  .chip.primary { background: var(--ink); color: #fff; border-color: var(--ink); font-weight: 600; }
+  .understood { width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+  .understood b { color: var(--ink); font-weight: 600; }
+  .understood .mini { border: 1px solid var(--line); background: var(--bg); border-radius: 999px; padding: 2px 9px;
+                      font: inherit; font-size: 12.5px; cursor: pointer; color: var(--ink); }
+  .understood .mini:hover { border-color: var(--ink); }
+
+  /* Affordability panel */
+  main { position: relative; }
+  .panel { position: absolute; top: 12px; right: 12px; z-index: 1001; width: 340px; max-height: calc(100% - 24px);
+           overflow-y: auto; background: #fff; border-radius: 16px; padding: 16px;
+           box-shadow: 0 8px 28px rgba(0,0,0,.18), 0 0 0 1px rgba(0,0,0,.05); }
+  .panel h2 { font-size: 16px; margin: 0; }
+  .panel .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .panel .x { border: none; background: none; font-size: 20px; cursor: pointer; color: var(--muted); line-height: 1; }
+  .panel .hint { color: var(--muted); font-size: 12px; margin: 0 0 12px; }
+  .panel label { display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 10px; }
+  .panel label input, .panel label select { display: block; width: 100%; margin-top: 4px; border-radius: 10px; padding: 7px 10px; }
+  .panel .row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+  .panel .seg { display: flex; gap: 6px; margin: 4px 0 10px; }
+  .panel .seg .chip { flex: 1; padding: 6px 8px; }
+  .panel .check { display: flex; gap: 8px; align-items: center; color: var(--ink); font-size: 13.5px; margin: 4px 0 12px; }
+  .panel .check input { width: auto; margin: 0; display: inline; }
+  .result { background: var(--soft); border-radius: 12px; padding: 12px; font-size: 13px; }
+  .result .big { font-size: 20px; font-weight: 800; color: var(--ink); }
+  .result ul { margin: 6px 0 0; padding-left: 18px; }
+  .warn { color: #9a3412; }
+  .panel details { margin-top: 10px; font-size: 12px; color: var(--muted); }
+  .panel details summary { cursor: pointer; color: var(--ink); }
+
+  /* Affordability on pills, cards and popups */
+  .pill.no { opacity: .35; }
+  .pill.no:hover, .pill.no.hot { opacity: 1; }
+  .aff { grid-column: 1 / -1; font-size: 12.5px; font-weight: 600; margin-top: 2px; }
+  .aff.ok { color: #0f766e; }
+  .aff.no { color: #9a3412; }
+  .aff.lim { color: #92400e; font-weight: 500; }
+  .buy { margin-top: 10px; border-radius: 10px; padding: 8px 10px; font-size: 12.5px; }
+  .buy.ok { background: #ecfdf5; }
+  .buy.no { background: #fff7ed; }
+  .buy b { font-size: 13px; }
+  .buy table { margin-top: 4px; }
+  .buy td { border-top: 1px solid rgba(0,0,0,.06); }
+
   @media (max-width: 800px) {
+    .ask { flex-basis: 100%; flex-wrap: wrap; }
+    .ask input { flex-basis: 100%; }
+    .ask .chip { flex: 1; }
+    .panel { position: fixed; top: auto; bottom: 0; left: 0; right: 0; width: auto; max-height: 82vh;
+             border-radius: 16px 16px 0 0; }
     header { padding: 10px 12px; gap: 8px; }
     header h1 { font-size: 15px; }
     .controls { width: 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
@@ -139,6 +192,11 @@
 <body>
 <header>
   <h1>HDB Resale Price Map</h1>
+  <form class="ask" id="askForm" role="search">
+    <input type="search" id="ask" placeholder='Ask, e.g. "4 room under 600k near MRT in the east"' aria-label="Describe the flat you want" autocomplete="off">
+    <button type="submit" class="chip primary">Search</button>
+    <button type="button" class="chip" id="affordBtn" aria-expanded="false" aria-controls="affordPanel">💰 What can I afford?</button>
+  </form>
   <div class="controls">
     <div class="types" id="types" role="group" aria-label="Flat type"></div>
     <input type="search" id="search" placeholder="Search block, street or town" aria-label="Search">
@@ -163,6 +221,7 @@
       <option value="-n">Sort: most sales</option>
     </select>
   </div>
+  <div class="understood" id="understood" hidden></div>
 </header>
 <main>
   <section id="listPane" aria-label="Blocks in view">
@@ -179,10 +238,44 @@
     <div class="note" id="note">Median transacted prices from HDB resale registrations — past sales, not listings.</div>
   </section>
   <div id="map" aria-label="Map of HDB blocks"></div>
+  <aside class="panel" id="affordPanel" hidden aria-label="What can I afford?">
+    <div class="top"><h2>What can I afford?</h2><button class="x" id="affordClose" aria-label="Close">×</button></div>
+    <p class="hint">A rough guide. Your numbers stay in this browser and are never sent anywhere.</p>
+    <label>Household gross monthly income (S$)<input type="number" id="aIncome" min="0" step="100" inputmode="numeric" placeholder="e.g. 8000"></label>
+    <div class="row">
+      <label>Cash savings (S$)<input type="number" id="aCash" min="0" step="1000" inputmode="numeric" placeholder="e.g. 40000"></label>
+      <label>CPF OA, all buyers (S$)<input type="number" id="aCpf" min="0" step="1000" inputmode="numeric" placeholder="e.g. 150000"></label>
+    </div>
+    <div class="row">
+      <label>Age of youngest buyer<input type="number" id="aAge" min="21" max="80" inputmode="numeric" placeholder="e.g. 35"></label>
+      <label>Loan tenure (years)<input type="number" id="aYears" min="5" max="30" value="25" inputmode="numeric"></label>
+    </div>
+    <div style="font-size:12.5px;color:var(--muted)">Loan type</div>
+    <div class="seg" id="aLoan" role="group" aria-label="Loan type">
+      <button type="button" class="chip" data-v="hdb" aria-pressed="true">HDB loan</button>
+      <button type="button" class="chip" data-v="bank" aria-pressed="false">Bank loan</button>
+    </div>
+    <label>Interest rate for the monthly estimate (% a year)<input type="number" id="aRate" min="0" max="10" step="0.05" value="2.6"></label>
+    <label class="check"><input type="checkbox" id="affordOnly"> Only show flats I can afford</label>
+    <div class="result" id="affordResult">Enter your income and the youngest buyer's age to see your budget.</div>
+    <details>
+      <summary>How this is worked out</summary>
+      <ul>
+        <li>Loan limited to 75% of the price, and by the Mortgage Servicing Ratio: the instalment, tested at 3% (HDB) or 4% (bank), must be at most 30% of income.</li>
+        <li>HDB loans run up to 25 years and must end by age 65. Bank loans need at least 5% cash; over 25 years or past age 65 the limit drops to 55% LTV with 10% cash.</li>
+        <li>If a flat's remaining lease doesn't cover the youngest buyer to age 95, CPF use and the HDB loan are pro-rated: (lease − 20) ÷ (75 − age). No CPF if under 20 years.</li>
+        <li>Buyer's stamp duty is included and can be paid with CPF. Grants, legal fees and renovation are not included.</li>
+        <li>Prices are each block's median sale price, not the asking price of a specific flat.</li>
+        <li>Rules change. Confirm with your HDB Flat Eligibility letter, CPF's housing calculators and your bank.</li>
+      </ul>
+    </details>
+  </aside>
 </main>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.js"></script>
+<script src="ask.js"></script>
+<script src="afford.js"></script>
 <script>
 // ---------- settings ----------
 const TILE_URL = "https://www.onemap.gov.sg/maps/tiles/Grey_HD/{z}/{x}/{y}.png";
@@ -207,6 +300,9 @@ const thisYear = new Date().getFullYear();
 
 // ---------- state ----------
 let DATA, flatType = DEFAULT_TYPE, quintiles = [], active = null;
+let townFilter = null;       // Set of towns from an "ask", e.g. the East region
+let affordP = null;          // affordability inputs, or null if not filled in
+const affordCache = new Map();
 const markers = new Map();   // block index -> marker (for the current flat type)
 
 const map = L.map("map", { minZoom: 11, maxZoom: 19, zoomControl: true, preferCanvas: false })
@@ -237,12 +333,26 @@ function filters() {
     maxPrice: parseFloat($("maxPrice").value) * 1000 || Infinity,
     mrt: parseFloat($("mrt").value) || Infinity,
     lease: parseFloat($("lease").value) || 0,
+    affordOnly: !!affordP && $("affordOnly").checked,
   };
 }
 
-function passes(b, f) {
+function leaseLeft(b) { return b.ly + 99 - thisYear; }
+
+function assessBlock(i) {
+  if (!affordP) return null;
+  if (!affordCache.has(i)) {
+    const b = DATA.blocks[i], s = b.f[flatType];
+    affordCache.set(i, s ? Afford.assess(affordP, s.p, leaseLeft(b)) : null);
+  }
+  return affordCache.get(i);
+}
+
+function passes(b, f, i) {
   const s = b.f[flatType];
   if (!s) return false;
+  if (townFilter && !townFilter.has(b.t)) return false;
+  if (f.affordOnly && i != null && !assessBlock(i)?.ok) return false;
   if (s.p > f.maxPrice) return false;
   if (f.mrt !== Infinity && (b.md == null || b.md > f.mrt)) return false;
   if (f.lease && b.ly + 99 - thisYear < f.lease) return false;
@@ -277,9 +387,40 @@ function popupHtml(b) {
       <div class="fact"><b>~${lease} years</b>lease left</div>
     </div>
     ${s.y != null ? `<div style="margin-top:6px">${change(s.y)}</div>` : ""}
+    ${buyHtml(DATA.blocks.indexOf(b))}
     ${sparkline(s.r)}
     <table>${rows}</table>
   </div>`;
+}
+
+function leaseNote(a) {
+  if (a.noCpf) return `<div class="warn">Lease under 20 years: no CPF and no HDB loan can be used.</div>`;
+  if (a.share < 1) return `<div class="warn">Lease covers the youngest buyer to about age ${Math.round(affordP.age + a.leaseYears)}, not 95, so CPF use${affordP.loanType === "hdb" ? " and the HDB loan are" : " is"} limited to ${Math.round(a.share * 100)}%.</div>`;
+  return "";
+}
+
+function buyHtml(i) {
+  const a = assessBlock(i);
+  if (!a) return "";
+  const loanName = affordP.loanType === "hdb" ? "HDB loan" : "Bank loan";
+  return `<div class="buy ${a.ok ? "ok" : "no"}">
+    <b>${a.ok ? "✓ Within your budget at the median price" : `Short by about ${k(a.shortBy)}`}</b>
+    <table>
+      <tr><td>${loanName}, ${a.years} yrs (${Math.round(a.ltvUsed * 100)}%)${a.limitedBy === "income" ? " · limited by income" : ""}</td><td>${money(a.loan)}</td></tr>
+      <tr><td>From CPF OA (incl. stamp duty)</td><td>${money(a.cpfForPrice + a.cpfForBsd)}</td></tr>
+      <tr><td>Cash needed</td><td>${money(a.cashNeeded)}</td></tr>
+      <tr><td>Monthly instalment at ${(affordP.rate * 100).toFixed(2).replace(/0$/, "")}%</td><td>${money(a.monthly)}</td></tr>
+    </table>
+    ${leaseNote(a)}
+  </div>`;
+}
+
+function affBadge(i) {
+  const a = assessBlock(i);
+  if (!a) return "";
+  if (!a.ok) return `<div class="aff no">Short by about ${k(a.shortBy)}${a.share < 1 ? " · CPF limited by lease" : ""}</div>`;
+  if (a.share < 1) return `<div class="aff lim">✓ Affordable, but CPF limited to ${Math.round(a.share * 100)}% by the lease</div>`;
+  return `<div class="aff ok">✓ Within your budget${a.cashNeeded > 0 ? ` · ${k(a.cashNeeded)} cash` : ""}</div>`;
 }
 
 const QLABEL = ["cheapest 20%", "20–40%", "middle 40–60%", "60–80%", "priciest 20%"];
@@ -321,7 +462,7 @@ function buildMarkers() {
     if (!s) return;
     const icon = L.divIcon({
       className: "pill-wrap", iconSize: null,
-      html: `<div class="pill" data-i="${i}" title="${esc(qTitle(s.q))}"><span class="dot" style="background:var(${quintile(s.q)})"></span>${k(s.p)}</div>`,
+      html: `<div class="pill${affordP && !assessBlock(i)?.ok ? " no" : ""}" data-i="${i}" title="${esc(qTitle(s.q))}"><span class="dot" style="background:var(${quintile(s.q)})"></span>${k(s.p)}</div>`,
     });
     const m = L.marker([b.la, b.lo], { icon, price: s.p, riseOnHover: true, keyboard: false });
     m.bindPopup(() => popupHtml(b), { maxWidth: 320, autoPanPadding: [30, 30] });
@@ -334,7 +475,7 @@ function buildMarkers() {
 function applyFilters() {
   const f = filters();
   const keep = [];
-  markers.forEach((m, i) => { if (passes(DATA.blocks[i], f)) keep.push(m); });
+  markers.forEach((m, i) => { if (passes(DATA.blocks[i], f, i)) keep.push(m); });
   cluster.clearLayers();
   cluster.addLayers(keep);
   renderList();
@@ -348,13 +489,13 @@ function renderList() {
   const visible = [];
   markers.forEach((m, i) => {
     const b = DATA.blocks[i];
-    if (passes(b, f) && bounds.contains(m.getLatLng())) visible.push(i);
+    if (passes(b, f, i) && bounds.contains(m.getLatLng())) visible.push(i);
   });
   visible.sort((a, b) => (val(DATA.blocks[a]) - val(DATA.blocks[b])) * (desc ? -1 : 1));
 
   $("count").textContent = `${visible.length.toLocaleString()} block${visible.length === 1 ? "" : "s"} in view`;
   if (!visible.length) {
-    $("list").innerHTML = `<div class="empty">No ${esc(title(flatType))} sales match here. Zoom out or relax the filters.</div>`;
+    $("list").innerHTML = `<div class="empty">No ${esc(title(flatType))} sales match here. Zoom out or relax the filters${f.affordOnly ? ", or untick “Only show flats I can afford”" : ""}.</div>`;
     return;
   }
   $("list").innerHTML = visible.slice(0, LIST_LIMIT).map(i => {
@@ -366,6 +507,7 @@ function renderList() {
       <div class="price">${money(s.p)}</div>
       <div class="meta">${esc(title(b.t))} · ${mrtText} · ~${b.ly + 99 - thisYear} yrs lease</div>
       <div class="sub">${money(s.q)}/sqm · ${s.n} sale${s.n === 1 ? "" : "s"}</div>
+      ${affBadge(i)}
     </div>`;
     }
     const mrt = b.md != null ? `<span class="tag" title="Straight-line distance to the nearest MRT exit">🚇 ${b.md.toLocaleString()} m · ${esc(station(b.m).replace(" MRT", ""))}</span>` : "";
@@ -377,6 +519,7 @@ function renderList() {
         <div class="tags">${mrt}<span class="tag" title="Remaining lease, approximate">⏳ ~${b.ly + 99 - thisYear} yrs lease</span>${change(s.y)}</div>
         ${sparkline(s.r, 96, 30, "Recent sale prices in this block")}
       </div>
+      ${affBadge(i)}
     </div>`;
   }).join("") + (visible.length > LIST_LIMIT
     ? `<div class="empty">Showing ${LIST_LIMIT} of ${visible.length.toLocaleString()}. Zoom in to see the rest.</div>` : "");
@@ -422,14 +565,15 @@ $("types").addEventListener("click", e => {
   flatType = btn.dataset.t;
   active = null;
   map.closePopup();
-  renderTypes(); buildMarkers(); applyFilters();
+  affordCache.clear();
+  renderTypes(); buildMarkers(); applyFilters(); renderAffordResult();
 });
 // Move the map to whatever the search matches
 function fitToMatches() {
   const f = filters();
   if (!f.text) return;
   const pts = [];
-  markers.forEach((m, i) => { if (passes(DATA.blocks[i], f)) pts.push(m.getLatLng()); });
+  markers.forEach((m, i) => { if (passes(DATA.blocks[i], f, i)) pts.push(m.getLatLng()); });
   if (pts.length) map.fitBounds(L.latLngBounds(pts), { padding: [40, 40], maxZoom: 17 });
 }
 let typing;
@@ -452,6 +596,169 @@ $("viewToggle").addEventListener("click", () => { setView(!detailed); if (DATA) 
 map.on("moveend", renderList);
 map.on("popupclose", () => { active = null; });
 
+// ---------- ask ----------
+function setSelect(id, value, label) {
+  const el = $(id);
+  if (value == null || value === "") { el.value = ""; return; }
+  if (![...el.options].some(o => o.value === String(value))) el.add(new Option(label, String(value)));
+  el.value = String(value);
+}
+
+function fitToFiltered() {
+  const f = filters(), pts = [];
+  markers.forEach((m, i) => { if (passes(DATA.blocks[i], f, i)) pts.push(m.getLatLng()); });
+  if (pts.length) map.fitBounds(L.latLngBounds(pts), { padding: [40, 40], maxZoom: 16 });
+}
+
+function showUnderstood(parts) {
+  const el = $("understood");
+  const area = townFilter ? `<button class="mini" id="clearArea" type="button">✕ ${esc(areaLabel)}</button>` : "";
+  if (!parts && !townFilter) { el.hidden = true; el.innerHTML = ""; return; }
+  el.hidden = false;
+  el.innerHTML = (parts ? `Showing <b>${parts.map(esc).join(" · ")}</b>` : "Area filter:") + " " + area +
+    ` <button class="mini" id="clearAll" type="button">Clear all</button>`;
+}
+let areaLabel = "";
+
+function clearAll() {
+  townFilter = null; areaLabel = "";
+  ["search", "maxPrice", "ask"].forEach(id => $(id).value = "");
+  $("mrt").value = ""; $("lease").value = ""; $("sort").value = "p";
+  $("affordOnly").checked = false;
+  showUnderstood(null); applyFilters();
+}
+
+$("understood").addEventListener("click", e => {
+  if (e.target.id === "clearArea") { townFilter = null; areaLabel = ""; showUnderstood(null); applyFilters(); }
+  if (e.target.id === "clearAll") clearAll();
+});
+
+$("askForm").addEventListener("submit", e => {
+  e.preventDefault();
+  if (!DATA) return;
+  const text = $("ask").value.trim();
+  if (!text) return;
+  const towns = [...new Set(DATA.blocks.map(b => b.t))];
+  const r = Ask.parse(text, towns);
+  if (!r.understood.length) {
+    $("understood").hidden = false;
+    $("understood").innerHTML = `Didn't catch that. Try something like <b>“3 room under 500k near MRT in Tampines”</b> or <b>“5 room in the west with 70+ years lease”</b>.`;
+    return;
+  }
+  if (r.flatType && DATA.flat_types.includes(r.flatType) && r.flatType !== flatType) {
+    flatType = r.flatType; active = null; map.closePopup(); affordCache.clear(); renderTypes(); buildMarkers();
+  }
+  $("maxPrice").value = r.maxPrice ? Math.round(r.maxPrice / 1000) : "";
+  setSelect("mrt", r.mrt, `Within ${(r.mrt || 0).toLocaleString()} m of MRT`);
+  setSelect("lease", r.lease, `${r.lease}+ years left`);
+  if (r.sort) $("sort").value = r.sort;
+  $("search").value = r.text || "";
+  townFilter = r.towns ? new Set(r.towns) : null;
+  areaLabel = r.region ? title(r.region) + " region" : r.towns ? title(r.towns[0]) : "";
+  if (r.affordable) {
+    if (affordP) $("affordOnly").checked = true; else openAfford();
+  }
+  showUnderstood(r.understood.filter(u => !(townFilter && (u.startsWith("in ") || u.endsWith(" region")))));
+  applyFilters(); fitToFiltered();
+});
+
+// Typing in the old filters by hand: keep the area filter, drop the "Showing …" summary
+["search", "maxPrice", "mrt", "lease", "sort"].forEach(id =>
+  $(id).addEventListener("change", () => showUnderstood(null)));
+
+// ---------- affordability ----------
+function readAfford() {
+  const num = id => parseFloat($(id).value);
+  const loanType = $("aLoan").querySelector('[aria-pressed="true"]').dataset.v;
+  const income = num("aIncome"), age = num("aAge");
+  if (!(income > 0) || !(age >= 18)) return null;
+  return {
+    income, age, loanType,
+    cash: num("aCash") || 0, cpf: num("aCpf") || 0,
+    years: num("aYears") || 25,
+    rate: (num("aRate") || (loanType === "hdb" ? 2.6 : 3)) / 100,
+  };
+}
+
+function renderAffordResult() {
+  const el = $("affordResult");
+  if (!affordP) { el.innerHTML = "Enter your income and the youngest buyer's age to see your budget."; return; }
+  const max = Afford.budget(affordP);
+  const t = Afford.loanTerms(affordP);
+  const notes = [];
+  if (affordP.loanType === "hdb" && affordP.income > Afford.RULES.hdb.incomeCeiling)
+    notes.push(`<li class="warn">Household income above S$14,000 a month is over the HDB loan ceiling, so a bank loan would be needed.</li>`);
+  if (t.years < (affordP.years || 25))
+    notes.push(`<li>Tenure capped at ${t.years} years so the loan ends by age 65.</li>`);
+  if (t.lowLtv) notes.push(`<li class="warn">A bank loan over 25 years or past age 65 is limited to 55% of the price.</li>`);
+  const a = Afford.assess(affordP, max, 99);
+  const shown = [];
+  markers.forEach((m, i) => { const x = assessBlock(i); if (x?.ok) shown.push(i); });
+  el.innerHTML = `Budget for a flat whose lease covers you to 95:
+    <div class="big">up to about ${k(max)}</div>
+    <ul>
+      <li>Loan up to ${k(a.loan)} (${a.limitedBy === "income" ? "limited by your income" : "75% of the price"}), about ${money(a.monthly)} a month</li>
+      <li>${shown.length.toLocaleString()} of ${markers.size.toLocaleString()} ${esc(title(flatType))} blocks are within budget at their median price</li>
+      ${notes.join("")}
+    </ul>`;
+}
+
+let affordTimer;
+function onAffordChange() {
+  clearTimeout(affordTimer);
+  affordTimer = setTimeout(() => {
+    affordP = readAfford();
+    affordCache.clear();
+    saveAfford();
+    if (DATA) { buildMarkers(); applyFilters(); renderAffordResult(); map.closePopup(); }
+  }, 250);
+}
+
+function saveAfford() {
+  try {
+    const v = {};
+    ["aIncome", "aCash", "aCpf", "aAge", "aYears", "aRate"].forEach(id => v[id] = $(id).value);
+    v.loan = $("aLoan").querySelector('[aria-pressed="true"]').dataset.v;
+    localStorage.setItem("afford", JSON.stringify(v));
+  } catch (e) {}
+}
+
+function loadAfford() {
+  try {
+    const v = JSON.parse(localStorage.getItem("afford") || "null");
+    if (!v) return;
+    ["aIncome", "aCash", "aCpf", "aAge", "aYears", "aRate"].forEach(id => { if (v[id] != null) $(id).value = v[id]; });
+    if (v.loan) setLoan(v.loan, false);
+  } catch (e) {}
+  affordP = readAfford();
+}
+
+function setLoan(v, fire = true) {
+  $("aLoan").querySelectorAll(".chip").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.v === v)));
+  if (fire) {
+    $("aRate").value = v === "hdb" ? "2.6" : "3";
+    $("aYears").value = "25";
+    onAffordChange();
+  }
+}
+
+function openAfford() {
+  $("affordPanel").hidden = false;
+  $("affordBtn").setAttribute("aria-expanded", "true");
+  if (!affordP) $("aIncome").focus();
+}
+$("affordBtn").addEventListener("click", () => {
+  if ($("affordPanel").hidden) openAfford();
+  else { $("affordPanel").hidden = true; $("affordBtn").setAttribute("aria-expanded", "false"); }
+});
+$("affordClose").addEventListener("click", () => {
+  $("affordPanel").hidden = true; $("affordBtn").setAttribute("aria-expanded", "false");
+});
+$("aLoan").addEventListener("click", e => { const b = e.target.closest(".chip"); if (b) setLoan(b.dataset.v); });
+["aIncome", "aCash", "aCpf", "aAge", "aYears", "aRate"].forEach(id => $(id).addEventListener("input", onAffordChange));
+$("affordOnly").addEventListener("change", applyFilters);
+loadAfford();
+
 // ---------- load ----------
 fetch("blocks.json")
   .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
@@ -459,7 +766,7 @@ fetch("blocks.json")
     DATA = d;
     if (!DATA.flat_types.includes(flatType)) flatType = DATA.flat_types[0];
     $("note").textContent = `Median transacted prices from HDB resale registrations, ${DATA.window} — past sales, not listings. Data up to ${DATA.latest}.`;
-    renderTypes(); buildMarkers(); applyFilters();
+    renderTypes(); buildMarkers(); applyFilters(); renderAffordResult();
   })
   .catch(() => {
     $("count").textContent = "Couldn't load the data";
