@@ -2,7 +2,8 @@
 
 For every block with coordinates, and every flat type sold there in the last
 12 months: number of sales, median price, median price per sqm, the price range,
-and the most recent sales.
+the most recent sales, and the change in price per sqm versus the 12 months before
+(only when both periods have enough sales to compare).
 
 Run from the repo root (after `dbt build`):
     python site/export_blocks.py
@@ -17,7 +18,8 @@ import pandas as pd
 DB = sys.argv[1] if len(sys.argv) > 1 else "hdb.duckdb"
 OUT = pathlib.Path("site/blocks.json")
 WINDOW_MONTHS = 12
-RECENT_SALES = 5
+RECENT_SALES = 8
+MIN_SALES_FOR_CHANGE = 3  # per period, before a year-over-year change is shown
 
 
 def main():
@@ -31,13 +33,19 @@ def main():
                 FROM fct_resale
                 WHERE latitude IS NOT NULL
                   AND txn_month > (SELECT MAX(txn_month) FROM fct_resale)
-                                  - INTERVAL {WINDOW_MONTHS} MONTH
+                                  - INTERVAL {2 * WINDOW_MONTHS} MONTH
                 ORDER BY txn_month DESC""").df()
     finally:
         con.close()
 
     if df.empty:
         raise SystemExit("No sales with coordinates found. Run the MRT/geocoding steps and dbt build first.")
+
+    cutoff = pd.Timestamp(latest) - pd.DateOffset(months=WINDOW_MONTHS)
+    df["txn_month"] = pd.to_datetime(df["txn_month"])
+    previous = df[df["txn_month"] <= cutoff]
+    df = df[df["txn_month"] > cutoff]
+    prev_psm = previous.groupby(["block", "street_name", "flat_type"])["price_psm"].agg(["median", "count"])
 
     blocks = {}
     for (block, street, ftype), g in df.groupby(["block", "street_name", "flat_type"], sort=False):
@@ -53,10 +61,17 @@ def main():
                 "f": {},
             }
         recent = g.head(RECENT_SALES)
+        q = g["price_psm"].median()
+        change = None
+        if len(g) >= MIN_SALES_FOR_CHANGE and (block, street, ftype) in prev_psm.index:
+            prev = prev_psm.loc[(block, street, ftype)]
+            if prev["count"] >= MIN_SALES_FOR_CHANGE:
+                change = round(float(q / prev["median"] - 1), 3)
         blocks[key]["f"][ftype] = {
             "n": int(len(g)),
             "p": int(round(g["resale_price"].median(), -3)),
-            "q": int(round(g["price_psm"].median())),
+            "q": int(round(q)),
+            "y": change,
             "lo": int(g["resale_price"].min()),
             "hi": int(g["resale_price"].max()),
             "r": [[r.txn_month.strftime("%Y-%m"), r.storey_range, int(r.floor_area_sqm), int(r.resale_price)]
